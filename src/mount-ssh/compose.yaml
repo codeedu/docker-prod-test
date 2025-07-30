@@ -1,0 +1,8 @@
+services:
+  app:
+    build: 
+      context: .
+      ssh:
+        - default
+        #- my_ssh=/......./.ssh/id_rsa
+
