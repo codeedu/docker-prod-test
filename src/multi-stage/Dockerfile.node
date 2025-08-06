@@ -1,0 +1,53 @@
+FROM node:23.0.0-slim AS ci
+
+USER node
+
+RUN mkdir /home/node/app
+
+WORKDIR /home/node/app
+
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=package-lock.json,target=package-lock.json \
+    --mount=type=cache,target=/home/node/.npm \
+    npm ci
+
+COPY --chown=node:node . .
+
+CMD [ "tail", "-f", "/dev/null" ]
+
+FROM node:23.0.0-slim AS builder
+
+ENV NODE_ENV=production
+
+USER node
+
+RUN mkdir /home/node/app
+
+WORKDIR /home/node/app
+
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=package-lock.json,target=package-lock.json \
+    --mount=type=cache,target=/home/node/.npm \
+    npm ci --only=production
+
+COPY . .
+RUN npm run build
+
+
+FROM node:23.0.0-slim AS production
+
+ENV NODE_ENV=production
+
+USER node
+
+RUN mkdir /home/node/app
+
+WORKDIR /home/node/app
+
+COPY --chown=node:node --from=builder /home/node/app/dist ./dist
+COPY --chown=node:node --from=builder /home/node/app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /home/node/app/package.json ./
+
+EXPOSE 3000
+
+CMD [ "npm", "run", "start:prod" ]

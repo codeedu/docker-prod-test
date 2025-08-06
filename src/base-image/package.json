@@ -1,0 +1,16 @@
+{
+  "name": "docker-para-producao-test3333",
+  "version": "1.0.1",
+  "description": "## 01 - Capítulo: Pontapé inicial22224444",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "express": "^5.1.0"
+  }
+}
