@@ -8,8 +8,8 @@ WORKDIR /home/node/app
 
 RUN --mount=type=bind,source=package.json,target=package.json \
     --mount=type=bind,source=package-lock.json,target=package-lock.json \
-    --mount=type=cache,target=/home/node/.npm \
-    npm ci
+    --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,id=npm-cache \
+    npm ci 
 
 COPY --chown=node:node . .
 
@@ -25,14 +25,11 @@ RUN mkdir /home/node/app
 
 WORKDIR /home/node/app
 
-RUN --mount=type=bind,source=package.json,target=package.json \
-    --mount=type=bind,source=package-lock.json,target=package-lock.json \
-    --mount=type=cache,target=/home/node/.npm \
-    npm ci --only=production
-
-COPY . .
+COPY --from=ci --chown=node:node /home/node/app .
 RUN npm run build
 
+RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,id=npm-cache \
+    npm ci --only=production
 
 FROM node:23.0.0-slim AS production
 
@@ -50,4 +47,4 @@ COPY --chown=node:node --from=builder /home/node/app/package.json ./
 
 EXPOSE 3000
 
-CMD [ "npm", "run", "start:prod" ]
+CMD [ "node", "dist/main.js" ]
