@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  limited_alpine:
+    image: alpine:latest
+    container_name: alpine_limited
+    command: ["sh", "-c", "while true; do sleep 1; done"]  # Mantém o container ativo
+    # Limites de CPU
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"        # até 1.5 CPUs
+          memory: 512M       # até 512 MB RAM
+        reservations:
+          cpus: "0.5"        # reserva mínima de 0.5 CPUs
+          memory: 256M       # reserva mínima de 256 MB
+
+    # Limites adicionais (usando cgroups diretamente)
+    memswap_limit: 1g        # RAM + swap
+    cpu_shares: 512          # prioridade de CPU (padrão 1024)
+
+    # https://docs.docker.com/reference/compose-file/services/#blkio_config
+    # Limites de disco (blkio)
+    blkio_config:
+      weight: 300            # prioridade de I/O (padrão 500, máx 1000)
+      device_read_bps:
+        - path: /dev/sda
+          rate: "20mb"
+      device_write_bps:
+        - path: /dev/sda
+          rate: "10mb"
