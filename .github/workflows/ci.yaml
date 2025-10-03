@@ -31,3 +31,14 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ env.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
+      
+      - name: Build for CI
+        id: build-ci
+        uses: docker/build-push-action@v5.0.0
+        with:
+          context: ./src/ci/nestjs-project
+          file: ./src/ci/nestjs-project/Dockerfile.prod
+          push: false
+          load: true # driver docker-container
+          target: ci
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci
