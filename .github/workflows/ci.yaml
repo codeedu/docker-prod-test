@@ -46,5 +46,11 @@ jobs:
           cache-to: type=gha,mode=max
           secrets: |
             github_token=${{ secrets.MY_GITHUB_TOKEN }}
-          
+    
+      - name: Up containers
+        run: docker compose -f ./src/ci/nestjs-project/compose.ci.yaml up -d --wait-timeout 10
+      
+      - name: Run tests
+        run: echo "Running tests..."
+      
 
