@@ -44,3 +44,4 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci
           secrets: |
             github_token=${{ secrets.MY_GITHUB_TOKEN }}
+          
