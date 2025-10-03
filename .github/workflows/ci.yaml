@@ -99,3 +99,32 @@ jobs:
         with:
           sarif_file: sarif.output.json
       
+      - name: Extract Docker metadata
+        id: meta
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: docker/metadata-action@v5.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.revision=${{ env.SHA }}
+          tags: |
+            type=edge,branch=$repo.default_branch
+            type=semver,pattern=v{{version}}
+            type=sha,prefix=,suffix=,format=short
+      
+      - name: Build final
+        id: build-final
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: docker/build-push-action@v5.0.0
+        with:
+          context: ./src/ci/nestjs-project
+          file: ./src/ci/nestjs-project/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+          secrets: |
+            github_token=${{ secrets.MY_GITHUB_TOKEN }}
