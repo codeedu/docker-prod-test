@@ -1,0 +1,57 @@
+services:
+  nestjs:
+    image: argentinaluiz/docker-prod-test:ci
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+      target: ci
+    ports:
+      - 3000:3000
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'        # Máximo 50% de 1 CPU
+          memory: 512M       # Máximo 512MB de RAM
+        reservations:
+          cpus: '0.25'       # Reserva mínima 25% de 1 CPU
+          memory: 256M       # Reserva mínima 256MB de RAM
+    cap_drop: 
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Um healthcheck pode ser adicionado quando tenhamos um comando já que iniciará a aplicação
+    # nesta aplicação temos o comando "tail -f /dev/null" apenas para manter o container rodando
+    # permitindo rodar o que quisermos para testes
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+    #   interval: 1m30s
+    #   timeout: 30s
+    #   retries: 5
+    #   start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+  
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: example
+      POSTGRES_DB: db
+    ports:
+      - 5432:5432
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'        # Máximo 1 CPU completa
+          memory: 1G         # Máximo 1GB de RAM
+        reservations:
+          cpus: '0.5'        # Reserva mínima 50% de 1 CPU
+          memory: 512M       # Reserva mínima 512MB de RAM
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
+
