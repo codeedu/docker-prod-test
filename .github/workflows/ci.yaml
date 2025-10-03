@@ -43,7 +43,8 @@ jobs:
           target: ci
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci
           cache-from: type=gha
-          cache-to: type=gha,mode=max 
+          cache-to: type=gha,mode=max
           secrets: |
             github_token=${{ secrets.MY_GITHUB_TOKEN }}
           
+
