@@ -35,6 +35,7 @@ services:
   postgres:
     image: postgres:15
     environment:
+      POSTGRES_PASSWORD: example
       POSTGRES_DB: db
     ports:
       - 5432:5432

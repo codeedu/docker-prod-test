@@ -1,4 +1,4 @@
-FROM node:23.0.0-slim AS ci
+FROM node:24.9.0-slim AS ci
 
 ARG REPO_PATH=github.com/argentinaluiz/private-repo.git
 
@@ -27,7 +27,7 @@ COPY --chown=node:node . .
 
 CMD [ "tail", "-f", "/dev/null" ]
 
-FROM node:23.0.0-slim AS builder
+FROM node:24.9.0-slim AS builder
 
 ENV NODE_ENV=production
 
@@ -43,7 +43,7 @@ RUN npm run build
 RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,id=npm-cache \
     npm ci --only=production
 
-FROM node:23.0.0-slim AS production
+FROM node:24.9.0-slim AS production
 
 ENV NODE_ENV=production
 

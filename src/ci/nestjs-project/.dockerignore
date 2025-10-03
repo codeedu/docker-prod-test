@@ -22,6 +22,8 @@
 **/*.jfm
 **/charts
 **/docker-compose*
+**/compose.*yml
+**/compose.*yaml
 **/compose.y*ml
 **/Dockerfile*
 **/node_modules
