@@ -51,8 +51,6 @@ jobs:
           load: true # driver docker-container
           target: ci
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           secrets: |
             github_token=${{ secrets.MY_GITHUB_TOKEN }}
 
@@ -71,8 +69,6 @@ jobs:
           push: false
           load: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.SHA }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           secrets: |
             github_token=${{ secrets.MY_GITHUB_TOKEN }}
 
@@ -126,8 +122,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
           secrets: |
