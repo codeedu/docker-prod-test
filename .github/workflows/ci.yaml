@@ -34,7 +34,6 @@ jobs:
         with:
           driver: cloud
           endpoint: "${{ env.DOCKER_USERNAME }}/${{ env.CLOUD_BUILDER_NAME }}"
-          install: true
 
       - name: Log into registry ${{ env.REGISTRY }}
         uses: docker/login-action@v3
