@@ -12,7 +12,7 @@ group "default" {
 
 target "prod" {
     inherits = ["docker-metadata-action"]
-    context = "./nestjs-project"
+    context = "./src/ci/nestjs-project"
     dockerfile = "./Dockerfile.prod"
     secret = [ 
     {
@@ -23,7 +23,7 @@ target "prod" {
 }
 
 target "ci"  {
-  context = "./nestjs-project"
+  context = "./src/ci/nestjs-project"
   dockerfile = "./Dockerfile.prod"
   tags = [ "${IMAGE_NAME}:ci" ]
   target = "ci"
