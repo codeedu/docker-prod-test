@@ -22,6 +22,7 @@ jobs:
       packages: write # Permitir publicar pacotes no GitHub Packages
       pull-requests: write # Permitir criar e atualizar pull requests
       security-events: write # Enviar eventos de segurança para o Github Security
+      id-token: write # Permitir emitir tokens OIDC para autenticação com provedores externos
 
     steps:
       - name: Checkout repository
@@ -101,7 +102,7 @@ jobs:
       
       - name: Extract Docker metadata
         id: meta
-        if: ${{ github.event_name != 'pull_request' }}
+        if: github.event_name != 'pull_request'
         uses: docker/metadata-action@v5.0.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -114,7 +115,7 @@ jobs:
       
       - name: Build final
         id: build-final
-        if: ${{ github.event_name != 'pull_request' }}
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v5.0.0
         with:
           context: ./src/ci/nestjs-project
@@ -128,3 +129,17 @@ jobs:
           sbom: true
           secrets: |
             github_token=${{ secrets.MY_GITHUB_TOKEN }}
+      
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3.5.0
+        with:
+          cosign-release: 'v2.2.4'
+      
+      - name: Sign the published Docker image
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build-final.outputs.digest }}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
