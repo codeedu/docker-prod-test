@@ -144,6 +144,6 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
-          DIGEST: ${{ fromJSON(steps.build-final.outputs.metadata).default['containerimage.digest'] }}
+          DIGEST: ${{ fromJSON(steps.build-final.outputs.metadata).prod['containerimage.digest'] }}
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
 
