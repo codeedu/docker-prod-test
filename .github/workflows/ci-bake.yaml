@@ -70,7 +70,6 @@ jobs:
           targets: prod
           files: |
             ./src/ci/docker-bake.hcl
-            cwd://${{ steps.meta.outputs.bake-file }}
           set: |
             prod.cache-from=type=gha
             prod.cache-to=type=gha,mode=max
