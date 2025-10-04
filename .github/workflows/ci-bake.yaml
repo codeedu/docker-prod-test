@@ -44,7 +44,7 @@ jobs:
         env:
           github_token: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: ./ci/docker-bake.hcl
+          files: ./src/ci/docker-bake.hcl
           push: false
           load: true
           targets: ci
@@ -69,7 +69,7 @@ jobs:
           load: true
           targets: prod
           files: |
-            ./ci/docker-bake.hcl
+            ./src/ci/docker-bake.hcl
             cwd://${{ steps.meta.outputs.bake-file }}
           set: |
             prod.cache-from=type=gha
@@ -128,7 +128,7 @@ jobs:
           sbom: true
           targets: prod
           files: |
-            ./ci/docker-bake.hcl
+            ./src/ci/docker-bake.hcl
             cwd://${{ steps.meta.outputs.bake-file }}
           set: |
             prod.cache-from=type=gha
