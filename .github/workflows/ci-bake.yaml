@@ -1,0 +1,149 @@
+name: CI Bake
+
+on:
+  push:
+    branches: [ "main" ]
+    # Publish semver tags as releases.
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: docker.io
+  DOCKER_USERNAME: argentinaluiz
+  IMAGE_NAME: argentinaluiz/docker-prod-test
+  SHA: ${{ github.event.pull_request.head.sha || github.event.after }}
+jobs:
+  ci:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Ler o conteúdo do repositório
+      packages: write # Permitir publicar pacotes no GitHub Packages
+      pull-requests: write # Permitir criar e atualizar pull requests
+      security-events: write # Enviar eventos de segurança para o Github Security
+      id-token: write # Permitir emitir tokens OIDC para autenticação com provedores externos
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+      
+      - name: Build for CI
+        id: build-ci
+        uses: docker/bake-action@v6
+        env:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: ./src/ci/docker-bake.hcl
+          push: false
+          load: true
+          targets: ci
+          set: |
+            ci.cache-from=type=gha
+            ci.cache-to=type=gha,mode=max
+            ci.tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci
+    
+      - name: Up containers
+        run: docker compose -f ./src/ci/nestjs-project/compose.ci.yaml up -d --wait-timeout 10
+      
+      - name: Run tests
+        run: echo "Running tests..."
+      
+      - name: Build for analysis
+        id: build-for-analysis
+        uses: docker/bake-action@v6
+        env:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          push: false
+          load: true
+          targets: prod
+          files: |
+            ./src/ci/docker-bake.hcl
+          set: |
+            prod.cache-from=type=gha
+            prod.cache-to=type=gha,mode=max
+            prod.tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.SHA }}
+      
+      - name: Analyze for critical and high CVEs
+        id: docker-scout-cves
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.SHA }}
+          only-severities: critical,high
+          only-fixed: true
+          summary: true # publicar github actions e pull request
+          exit-code: true
+      
+      - name: Analyze for all CVEs
+        id: docker-scout-all-cves
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.SHA }}
+          summary: true
+          sarif-file: sarif.output.json
+
+      - name: Upload SARIF result
+        id: upload-sarif
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif.output.json
+      
+      - name: Extract Docker metadata
+        id: meta
+        if: github.event_name != 'pull_request'
+        uses: docker/metadata-action@v5.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.revision=${{ env.SHA }}
+          tags: |
+            type=edge,branch=$repo.default_branch
+            type=semver,pattern=v{{version}}
+            type=sha,prefix=,suffix=,format=short
+      
+      - name: Build final
+        id: build-final
+        if: github.event_name != 'pull_request'
+        uses: docker/bake-action@v6
+        env:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          push: true
+          provenance: mode=max
+          sbom: true
+          targets: prod
+          files: | 
+            ./src/ci/docker-bake.hcl
+            cwd://${{ steps.meta.outputs.bake-file }}
+          set: |
+            prod.cache-from=type=gha
+            prod.cache-to=type=gha,mode=max
+            prod.tags=${{ steps.meta.outputs.tags }}
+      
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3.5.0
+        with:
+          cosign-release: 'v2.2.4'
+      
+      - name: Sign the published Docker image
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ fromJSON(steps.build-final.outputs.metadata).prod['containerimage.digest'] }}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
