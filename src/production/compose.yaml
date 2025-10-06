@@ -1,0 +1,433 @@
+# ============================================================================
+# Docker Compose para Produção - Produção
+# ============================================================================
+# Este arquivo consolida todos os conceitos aprendidos no Produção:
+# - Configuração de serviços com healthchecks, restart policies e limites
+# - Secrets management
+# - Redes isoladas e segurança de rede
+# - Volumes e persistência
+# - Log drivers e monitoramento
+# - Profiles para diferentes ambientes
+# ============================================================================
+
+# VERSÃO DO COMPOSE
+# Compose v2 é o padrão atual (não precisa especificar version)
+# 
+
+# ============================================================================
+# CONFIGURAÇÃO DE REDES
+# ============================================================================
+networks:
+  # Rede frontend: exposta ao mundo externo via nginx
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+    # Labels para documentação
+    labels:
+      com.docker.compose.network: "frontend"
+      description: "Rede pública para nginx e acesso externo"
+
+  # Rede backend: isolada, apenas comunicação interna
+  backend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+    # Isolamento: apenas app e banco se comunicam
+    internal: true  # Em produção real, considere 'true' para isolamento total
+    labels:
+      com.docker.compose.network: "backend"
+      description: "Rede privada para app e banco de dados"
+
+# ============================================================================
+# CONFIGURAÇÃO DE VOLUMES
+# ============================================================================
+volumes:
+  # ============================================================================
+  # Volume para dados do PostgreSQL
+  # ============================================================================
+  # IMPORTANTE: Em produção, a escolha do storage é crítica para performance,
+  # disponibilidade e backup do banco de dados.
+  #
+  # OPÇÃO 1: Volume Docker Nativo (ATUAL - Recomendado para single-node)
+  # Melhor performance, gerenciado pelo Docker, isolamento adequado
+  postgres_data:
+    driver: local
+    # Docker gerencia automaticamente em /var/lib/docker/volumes/
+    # Vantagens:
+    # - Melhor performance (otimizado pelo Docker)
+    # - Gerenciamento automático de permissões
+    # - Integração com backup via plugins
+    # - Portabilidade entre ambientes
+    labels:
+      description: "Dados persistentes do PostgreSQL"
+      backup: "daily"
+      critical: "true"
+  
+  # OPÇÃO 2: Bind Mount com caminho absoluto
+  # Use quando precisar de controle total do local de armazenamento
+  # postgres_data:
+  #   driver: local
+  #   driver_opts:
+  #     type: none
+  #     o: bind
+  #     device: /var/lib/docker-volumes/postgres  # Caminho ABSOLUTO
+  #   # Vantagens:
+  #   # - Controle total do local (ex: montar em SSD/NVMe dedicado)
+  #   # - Facilita backup automatizado com scripts externos
+  #   # - Útil para compliance (auditoria de localização física dos dados)
+  #   labels:
+  #     description: "Dados persistentes do PostgreSQL"
+  
+  # OPÇÃO 3: NFS - Network File System (Ideal para clusters/alta disponibilidade)
+  # Use em ambientes distribuídos onde múltiplos nodes precisam acessar os dados
+  # postgres_data:
+  #   driver: local
+  #   driver_opts:
+  #     type: nfs
+  #     o: addr=192.168.1.100,rw,nfsvers=4.1,hard,intr
+  #     device: ":/mnt/nfs/postgres_data"
+  #   # Vantagens:
+  #   # - Compartilhamento entre múltiplos nodes
+  #   # - Facilita failover e alta disponibilidade
+  #   # - Backup centralizado no storage server
+  #   # - Escalabilidade horizontal
+  #   # Desvantagens:
+  #   # - Latência de rede (impacto na performance)
+  #   # - Dependência do NFS server (ponto único de falha)
+  #   # - Requer configuração adicional de segurança
+  #   labels:
+  #     description: "Dados persistentes do PostgreSQL via NFS"
+
+  # Volume para logs da aplicação
+  app_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./logs/app
+    labels:
+      description: "Logs da aplicação Node.js"
+
+# ============================================================================
+# SECRETS
+# ============================================================================
+# Secrets do Docker (requer Swarm mode para secrets nativos)
+# Para desenvolvimento/produção sem Swarm, usamos arquivos externos
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  db_user:
+    file: ./secrets/db_user.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  
+# ============================================================================
+# CONFIGURAÇÕES
+# ============================================================================
+# Arquivo .env é carregado automaticamente
+# Variáveis podem ser substituídas usando ${VARIABLE:-default}
+
+# ============================================================================
+# SERVIÇOS
+# ============================================================================
+services:
+  
+  # ============================================================================
+  # NGINX - Reverse Proxy
+  # ============================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: production_nginx
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Redes: conectado ao frontend (externo) e backend (app)
+    networks:
+      - frontend
+      - backend
+    
+    # Portas expostas
+    ports:
+      - "80:80"
+    
+    # Volumes
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+    
+    # Dependências
+    depends_on:
+      app:
+        condition: service_started  # Mudado de service_healthy porque com múltiplas réplicas não funciona corretamente
+    
+    # Healthcheck
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Limites de recursos
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service,tier,environment"
+        tag: "nginx"
+    
+    # Labels para organização
+    labels:
+      service: "nginx"
+      tier: "frontend"
+      environment: "${ENVIRONMENT:-production}"
+    
+    # Profile: sempre ativo
+    # profiles: ["production"]
+
+  # ==========================================================================
+  # NODE.JS APPLICATION
+  # ==========================================================================
+  app:
+    image: argentinaluiz/docker-prod-test:latest
+    build:
+      context: ./app
+      dockerfile: Dockerfile.prod
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Redes: backend (db)
+    networks:
+      - backend
+    
+    # Portas (não expostas externamente, apenas no nginx)
+    expose:
+      - "3000"
+    
+    # Variáveis de ambiente
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-appdb}
+      # Secrets são carregados via arquivos em /run/secrets/
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    
+    # Secrets
+    secrets:
+      - db_password
+      - db_user
+      - jwt_secret
+    
+    # Volumes
+    volumes:
+      - app_logs:/app/logs
+      # Em produção, NÃO use bind mount do código fonte
+      # - ./app:/app  # ❌ Apenas para desenvolvimento
+    
+    # Dependências
+    depends_on:
+      postgres:
+        condition: service_healthy
+    
+    # Healthcheck
+    healthcheck:
+      test: ["CMD", "node", "/app/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Limites de recursos
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+      # Configuração de réplicas (3 instâncias da aplicação)
+      # Nota: deploy.replicas só é totalmente suportado no Docker Swarm
+      # No Compose standalone, use: docker compose up -d --scale app=3
+      replicas: 3
+      # Configurações abaixo só funcionam no Docker Swarm:
+      # update_config:
+      #   parallelism: 1
+      #   delay: 10s
+      #   order: start-first
+      # rollback_config:
+      #   parallelism: 1
+      #   delay: 5s
+    
+    # Logging estruturado
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        labels: "service,tier,environment"
+        tag: "{{.Name}}/{{.ID}}"
+    
+    # Labels
+    labels:
+      service: "app"
+      tier: "backend"
+      environment: "${ENVIRONMENT:-production}"
+      version: "${APP_VERSION:-1.0.0}"
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Drop all capabilities (princípio do menor privilégio)
+    cap_drop:
+      - ALL
+    
+    # User namespace (melhor prática de segurança)
+    # user: "node:node"  # Descomente se a imagem suportar
+
+  # ==========================================================================
+  # POSTGRESQL - Banco de Dados
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: production_postgres
+    
+    restart: unless-stopped
+    
+    # Rede isolada backend
+    networks:
+      - backend
+    
+    # Portas: NÃO expor externamente em produção
+    # ports:
+    #   - "5432:5432"  # ❌ Apenas para debug, remover em produção
+    
+    expose:
+      - "5432"
+    
+    # Variáveis de ambiente
+    environment:
+      - POSTGRES_DB=${DB_NAME:-appdb}
+      - POSTGRES_USER_FILE=/run/secrets/db_user
+      - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    
+    # Secrets
+    secrets:
+      - db_password
+      - db_user
+    
+    # Volumes persistentes
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    
+    # OTIMIZAÇÃO: Use tmpfs para dados temporários (melhora performance)
+    # Sockets e arquivos temporários não precisam de persistência
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql  # Socket Unix em memória para melhor performance
+    
+    # Healthcheck
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$(cat /run/secrets/db_user) -d ${DB_NAME:-appdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    # Limites de recursos
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+        tag: "postgres"
+    
+    # Labels
+    labels:
+      service: "postgres"
+      tier: "database"
+    
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    
+    # Shared memory size (importante para PostgreSQL)
+    shm_size: 256mb
+
+# ============================================================================
+# INICIALIZAÇÃO
+# ============================================================================
+# 
+# Para iniciar a aplicação:
+#   docker compose up -d
+#
+# Para iniciar serviços específicos:
+#   docker compose up -d app postgres nginx
+#
+# ============================================================================
+
+# ============================================================================
+# COMANDOS ÚTEIS
+# ============================================================================
+#
+# Deploy com mínimo downtime:
+#   docker compose up -d --no-deps --build app
+#
+# Verificar saúde dos serviços:
+#   docker compose ps
+#   docker compose exec app node healthcheck.js
+#
+# Logs:
+#   docker compose logs -f app
+#   docker compose logs --tail=100 postgres
+#
+# Backup do banco:
+#   docker compose exec postgres pg_dump -U $(cat secrets/db_user.txt) appdb > backup.sql
+#
+# Restore do banco:
+#   docker compose exec -T postgres psql -U $(cat secrets/db_user.txt) appdb < backup.sql
+#
+# Inspecionar volume do PostgreSQL:
+#   docker volume inspect production_postgres_data
+#
+# Localizar dados do volume:
+#   docker volume inspect production_postgres_data | grep Mountpoint
+#
+# Backup do volume Docker:
+#   docker run --rm -v production_postgres_data:/data -v $(pwd):/backup alpine tar czf /backup/postgres_backup.tar.gz -C /data .
+#
+# ============================================================================

@@ -1,0 +1,50 @@
+FROM node:24.9.0-slim AS ci
+
+USER node
+
+RUN mkdir /home/node/app
+
+WORKDIR /home/node/app
+
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=package-lock.json,target=package-lock.json \
+    --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,id=npm-cache \
+    npm ci
+
+COPY --chown=node:node . .
+
+CMD [ "tail", "-f", "/dev/null" ]
+
+FROM node:24.9.0-slim AS builder
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV LOG_LEVEL=info
+
+USER node
+
+RUN mkdir /home/node/app
+
+WORKDIR /home/node/app
+
+COPY --from=ci --chown=node:node /home/node/app .
+# RUN npm run build não tem build nesta aplicação
+
+RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,id=npm-cache \
+    npm ci --only=production
+
+FROM node:24.9.0-slim AS production
+
+ENV NODE_ENV=production
+
+USER node
+
+RUN mkdir /home/node/app
+
+WORKDIR /home/node/app
+
+COPY --chown=node:node --from=builder /home/node/app .
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
